@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function to check if a user is part of a resource's partners list
+    function isResourcePartner(resource) {
+        return request.auth != null && request.auth.uid in resource.data.partners;
+    }
+
+    // Users can only read and write their own profile.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Couples can be read/updated by partners, created if user is a partner.
+    match /couples/{coupleId} {
+      allow read, update: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/couples/$(coupleId)).data.partners;
+      allow create: if isResourcePartner(request.resource);
+      allow delete: if false;
+    }
+
+    // Game sessions follow similar logic
+    match /game_sessions/{sessionId} {
+      function isGameSessionPartner() {
+        return request.auth != null && request.auth.uid in get(/databases/$(database)/documents/game_sessions/$(sessionId)).data.partners;
+      }
+      allow read: if isGameSessionPartner();
+      allow create: if isResourcePartner(request.resource);
+      // NOTE: This rule allows any partner to update the entire game session.
+      // For stricter validation (e.g., preventing a user from modifying their
+      // partner's score), this logic should be handled in a backend function
+      // which has trusted authority to validate and write data.
+      allow update: if isGameSessionPartner();
+      allow delete: if false;
+    }
+
+    // SOS fights follow similar logic
+    match /sos_fights/{fightId} {
+        function isSosFightPartner() {
+            return request.auth != null && request.auth.uid in get(/databases/$(database)/documents/sos_fights/$(fightId)).data.partners;
+        }
+       allow read, update: if isSosFightPartner();
+       allow create: if isResourcePartner(request.resource);
+       allow delete: if false;
+    }
+
+    // Only backend services can write to AI logs. No client access.
+    match /ai_generation_logs/{logId} {
+        allow read, write: if false;
+    }
+  }
+}

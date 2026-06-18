@@ -1,0 +1,6 @@
+{
+  "stripe": {
+    "secret": "dummy_secret",
+    "webhook_secret": "dummy_webhook_secret"
+  }
+}

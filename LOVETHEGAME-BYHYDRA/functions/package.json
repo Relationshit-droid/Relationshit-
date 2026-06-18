@@ -1,0 +1,25 @@
+{
+  "name": "functions",
+  "description": "Cloud Functions for Firebase",
+  "scripts": {
+    "build": "tsc",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "@google-cloud/vertexai": "^0.5.0",
+    "firebase-admin": "^11.0.1",
+    "firebase-functions": "^7.1.1"
+  },
+  "devDependencies": {
+    "typescript": "^4.9.5"
+  },
+  "private": true
+}
