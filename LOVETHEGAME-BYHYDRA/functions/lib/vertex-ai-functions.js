@@ -1,21 +1,15 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.synthesizeSpeech = exports.analyzeUserInput = exports.generateGameContent = void 0;
-const functions = require("firebase-functions");
-const { setGlobalOptions } = require("firebase-functions/v2");
 const vertexai_1 = require("@google-cloud/vertexai");
 const storage_1 = require("firebase-admin/storage");
 const text_to_speech_1 = require("@google-cloud/text-to-speech");
-
-// Set global options
-setGlobalOptions({ memory: "256MB", timeoutSeconds: 60 });
-
+const https_1 = require("firebase-functions/v2/https");
 // Initialize Vertex AI
 const vertexAI = new vertexai_1.VertexAI({
     project: process.env.GCLOUD_PROJECT || 'love-actually-game',
     location: 'us-central1',
 });
-
 // --- Gemini Model Configuration ---
 const MODEL_CONFIG = {
     temperature: 0.8,
@@ -23,15 +17,13 @@ const MODEL_CONFIG = {
     topK: 40,
     maxOutputTokens: 2048,
 };
-
 const SAFETY_SETTINGS = [
     { category: vertexai_1.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: vertexai_1.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
     { category: vertexai_1.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: vertexai_1.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
     { category: vertexai_1.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: vertexai_1.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
     { category: vertexai_1.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: vertexai_1.HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
 ];
-
-// --- Tool and Function Declarations for Gemini --- 
+// --- Tool and Function Declarations for Gemini ---
 const analysisFunction = {
     name: 'perform_analysis',
     description: 'Performs a detailed analysis of user input within a relationship context.',
@@ -48,9 +40,7 @@ const analysisFunction = {
         required: ['sentiment', 'confidence', 'triggers', 'marcieResponse', 'intensity', 'relationshipImpact']
     }
 };
-
 const tools = [{ function_declarations: [analysisFunction] }];
-
 // Initialize the generative model with tools
 const generativeModel = vertexAI.getGenerativeModel({
     model: 'gemini-1.0-pro-001',
@@ -58,20 +48,18 @@ const generativeModel = vertexAI.getGenerativeModel({
     safety_settings: SAFETY_SETTINGS,
     tools: tools,
 });
-
 const ttsClient = new text_to_speech_1.TextToSpeechClient();
-
-// --- Firebase Cloud Functions --- 
+// --- Firebase Cloud Functions ---
 /**
  * Generates personalized game content using Gemini and a detailed prompt.
  */
-exports.generateGameContent = functions.https.onCall(async (data, context) => {
+exports.generateGameContent = (0, https_1.onCall)({ memory: '256MiB', timeoutSeconds: 60 }, async (request) => {
     var _a, _b, _c, _d, _e;
-    if (!context.auth)
-        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-    const { gameType, prompt } = data;
+    if (!request.auth)
+        throw new https_1.HttpsError('unauthenticated', 'User must be authenticated');
+    const { gameType, prompt } = request.data;
     if (!gameType || !prompt)
-        throw new functions.https.HttpsError('invalid-argument', 'Missing required parameters');
+        throw new https_1.HttpsError('invalid-argument', 'Missing required parameters');
     // Detailed system prompts (no change from original)
     const systemPrompt = `...`; // Your existing system prompts here
     try {
@@ -92,26 +80,25 @@ exports.generateGameContent = functions.https.onCall(async (data, context) => {
             console.error("Failed to parse AI response:", e, "Raw text:", text);
             content = { commentary: text, error: 'Failed to parse structured response' };
         }
-        await logAIGeneration(gameType, context.auth.uid, prompt, text);
+        await logAIGeneration(gameType, request.auth.uid, prompt, text);
         return { content };
     }
     catch (error) {
         console.error('Vertex AI generation error:', error);
-        throw new functions.https.HttpsError('internal', 'AI content generation failed', { fallback: getFallbackContent(gameType) });
+        throw new https_1.HttpsError('internal', 'AI content generation failed', { fallback: getFallbackContent(gameType) });
     }
 });
-
 /**
  * Analyzes user input for emotional content using Gemini Function Calling.
  */
-exports.analyzeUserInput = functions.https.onCall(async (data, context) => {
+exports.analyzeUserInput = (0, https_1.onCall)({ memory: '256MiB', timeoutSeconds: 30 }, async (request) => {
     var _a, _b, _c, _d;
-    if (!context.auth)
-        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
-    const { input, context: analysisContext } = data;
+    if (!request.auth)
+        throw new https_1.HttpsError('unauthenticated', 'User must be authenticated.');
+    const { input, context: analysisContext } = request.data;
     if (!input)
-        throw new functions.https.HttpsError('invalid-argument', 'Input text is required.');
-    const prompt = `Analyze this user input for emotional content and relationship significance:\n\"${input}\"\n\nContext: ${JSON.stringify(analysisContext)}\n\nNow, use the provided tool to perform the analysis.`;
+        throw new https_1.HttpsError('invalid-argument', 'Input text is required.');
+    const prompt = `Analyze this user input for emotional content and relationship significance:\n"${input}"\n\nContext: ${JSON.stringify(analysisContext)}\n\nNow, use the provided tool to perform the analysis.`;
     try {
         const result = await generativeModel.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
         const response = result.response;
@@ -121,27 +108,26 @@ exports.analyzeUserInput = functions.https.onCall(async (data, context) => {
             return { success: true, analysis };
         }
         else {
-            // Fallback if the model doesn\'t call the function
+            // Fallback if the model doesn't call the function
             return { success: false, analysis: { marcieResponse: "I'm not sure how to respond to that, darling. Can you tell me more?" } };
         }
     }
     catch (error) {
         console.error('Input analysis error:', error);
-        throw new functions.https.HttpsError('internal', 'Failed to analyze input.');
+        throw new https_1.HttpsError('internal', 'Failed to analyze input.');
     }
 });
-
 /**
  * Synthesizes speech for Marcie's responses using Google Cloud Text-to-Speech
  * and serves it securely from Firebase Storage.
  */
-exports.synthesizeSpeech = functions.https.onCall(async (data, context) => {
-    if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
+exports.synthesizeSpeech = (0, https_1.onCall)(async (request) => {
+    if (!request.auth) {
+        throw new https_1.HttpsError('unauthenticated', 'User must be authenticated.');
     }
-    const { text, voiceSettings } = data;
+    const { text, voiceSettings } = request.data;
     if (!text) {
-        throw new functions.https.HttpsError('invalid-argument', 'Text to synthesize is required.');
+        throw new https_1.HttpsError('invalid-argument', 'Text to synthesize is required.');
     }
     const storage = (0, storage_1.getStorage)();
     const bucket = storage.bucket(process.env.GCLOUD_STORAGE_BUCKET || `${process.env.GCLOUD_PROJECT}.appspot.com`);
@@ -149,7 +135,7 @@ exports.synthesizeSpeech = functions.https.onCall(async (data, context) => {
     const speakingRate = (voiceSettings === null || voiceSettings === void 0 ? void 0 : voiceSettings.speed) || 1.1;
     const pitch = (voiceSettings === null || voiceSettings === void 0 ? void 0 : voiceSettings.pitch) || -2.0;
     // Generate a unique filename
-    const fileName = `marcie-audio/${context.auth.uid}/${Date.now()}.mp3`;
+    const fileName = `marcie-audio/${request.auth.uid}/${Date.now()}.mp3`;
     const file = bucket.file(fileName);
     try {
         const [response] = await ttsClient.synthesizeSpeech({
@@ -176,17 +162,14 @@ exports.synthesizeSpeech = functions.https.onCall(async (data, context) => {
     }
     catch (error) {
         console.error('Speech synthesis error:', error);
-        throw new functions.https.HttpsError('internal', 'Failed to synthesize speech. Please try again later.');
+        throw new https_1.HttpsError('internal', 'Failed to synthesize speech. Please try again later.');
     }
 });
-
 // --- Helper Functions (unchanged) ---
 async function logAIGeneration(gameType, userId, prompt, response) {
     /* ... */
 }
-
 function getFallbackContent(gameType) {
     /* ... */
 }
-
 //# sourceMappingURL=vertex-ai-functions.js.map

@@ -1,7 +1,7 @@
-import * as functions from 'firebase-functions';
 import { VertexAI, FunctionDeclarationSchemaType, HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
 import { getStorage } from 'firebase-admin/storage';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
+import { onCall, HttpsError, CallableRequest } from 'firebase-functions/v2/https';
 
 // Initialize Vertex AI
 const vertexAI = new VertexAI({
@@ -11,7 +11,7 @@ const vertexAI = new VertexAI({
 
 // --- Gemini Model Configuration ---
 const MODEL_CONFIG = {
-  temperature: 0.8, 
+  temperature: 0.8,
   topP: 0.8,
   topK: 40,
   maxOutputTokens: 2048,
@@ -24,7 +24,7 @@ const SAFETY_SETTINGS = [
     { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
 ];
 
-// --- Tool and Function Declarations for Gemini --- 
+// --- Tool and Function Declarations for Gemini ---
 
 const analysisFunction = {
     name: 'perform_analysis',
@@ -45,7 +45,6 @@ const analysisFunction = {
 
 const tools = [{ function_declarations: [analysisFunction] }];
 
-
 // Initialize the generative model with tools
 const generativeModel = vertexAI.getGenerativeModel({
   model: 'gemini-1.0-pro-001',
@@ -56,17 +55,16 @@ const generativeModel = vertexAI.getGenerativeModel({
 
 const ttsClient = new TextToSpeechClient();
 
-
-// --- Firebase Cloud Functions --- 
+// --- Firebase Cloud Functions ---
 
 /**
  * Generates personalized game content using Gemini and a detailed prompt.
  */
-export const generateGameContent = functions.runWith({ memory: '256MB', timeoutSeconds: 60 }).https.onCall(async (data, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+export const generateGameContent = onCall({ memory: '256MiB', timeoutSeconds: 60 }, async (request: CallableRequest) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated');
 
-    const { gameType, prompt } = data;
-    if (!gameType || !prompt) throw new functions.https.HttpsError('invalid-argument', 'Missing required parameters');
+    const { gameType, prompt } = request.data;
+    if (!gameType || !prompt) throw new HttpsError('invalid-argument', 'Missing required parameters');
 
     // Detailed system prompts (no change from original)
     const systemPrompt = `...`; // Your existing system prompts here
@@ -75,8 +73,8 @@ export const generateGameContent = functions.runWith({ memory: '256MB', timeoutS
         const result = await generativeModel.generateContent({ contents: [{ role: 'user', parts: [{ text: systemPrompt }] }] });
         const response = result.response;
         const text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        
-        let content = {};
+
+        let content: any = {};
         try {
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
@@ -88,26 +86,26 @@ export const generateGameContent = functions.runWith({ memory: '256MB', timeoutS
             console.error("Failed to parse AI response:", e, "Raw text:", text);
             content = { commentary: text, error: 'Failed to parse structured response' };
         }
-        
-        await logAIGeneration(gameType, context.auth.uid, prompt, text);
+
+        await logAIGeneration(gameType, request.auth.uid, prompt, text);
         return { content };
 
     } catch (error) {
         console.error('Vertex AI generation error:', error);
-        throw new functions.https.HttpsError('internal', 'AI content generation failed', { fallback: getFallbackContent(gameType) });
+        throw new HttpsError('internal', 'AI content generation failed', { fallback: getFallbackContent(gameType) });
     }
 });
 
 /**
  * Analyzes user input for emotional content using Gemini Function Calling.
  */
-export const analyzeUserInput = functions.runWith({ memory: '256MB', timeoutSeconds: 30 }).https.onCall(async (data, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
-    
-    const { input, context: analysisContext } = data;
-    if (!input) throw new functions.https.HttpsError('invalid-argument', 'Input text is required.');
+export const analyzeUserInput = onCall({ memory: '256MiB', timeoutSeconds: 30 }, async (request: CallableRequest) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'User must be authenticated.');
 
-    const prompt = `Analyze this user input for emotional content and relationship significance:\n\"${input}\"\n\nContext: ${JSON.stringify(analysisContext)}\n\nNow, use the provided tool to perform the analysis.`;
+    const { input, context: analysisContext } = request.data;
+    if (!input) throw new HttpsError('invalid-argument', 'Input text is required.');
+
+    const prompt = `Analyze this user input for emotional content and relationship significance:\n"${input}"\n\nContext: ${JSON.stringify(analysisContext)}\n\nNow, use the provided tool to perform the analysis.`;
 
     try {
         const result = await generativeModel.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
@@ -118,30 +116,30 @@ export const analyzeUserInput = functions.runWith({ memory: '256MB', timeoutSeco
             const analysis = functionCall.args; // Arguments are already parsed JSON
             return { success: true, analysis };
         } else {
-             // Fallback if the model doesn\'t call the function
+            // Fallback if the model doesn't call the function
             return { success: false, analysis: { marcieResponse: "I'm not sure how to respond to that, darling. Can you tell me more?" } };
         }
 
     } catch (error) {
         console.error('Input analysis error:', error);
-        throw new functions.https.HttpsError('internal', 'Failed to analyze input.');
+        throw new HttpsError('internal', 'Failed to analyze input.');
     }
 });
 
 /**
- * Synthesizes speech for Marcie's responses using Google Cloud Text-to-Speech 
+ * Synthesizes speech for Marcie's responses using Google Cloud Text-to-Speech
  * and serves it securely from Firebase Storage.
  */
-export const synthesizeSpeech = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
+export const synthesizeSpeech = onCall(async (request: CallableRequest) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
   }
 
-  const { text, voiceSettings } = data;
+  const { text, voiceSettings } = request.data;
   if (!text) {
-    throw new functions.https.HttpsError('invalid-argument', 'Text to synthesize is required.');
+    throw new HttpsError('invalid-argument', 'Text to synthesize is required.');
   }
-  
+
   const storage = getStorage();
   const bucket = storage.bucket(process.env.GCLOUD_STORAGE_BUCKET || `${process.env.GCLOUD_PROJECT}.appspot.com`);
 
@@ -150,7 +148,7 @@ export const synthesizeSpeech = functions.https.onCall(async (data, context) => 
   const pitch = voiceSettings?.pitch || -2.0;
 
   // Generate a unique filename
-  const fileName = `marcie-audio/${context.auth.uid}/${Date.now()}.mp3`;
+  const fileName = `marcie-audio/${request.auth.uid}/${Date.now()}.mp3`;
   const file = bucket.file(fileName);
 
   try {
@@ -183,7 +181,7 @@ export const synthesizeSpeech = functions.https.onCall(async (data, context) => 
 
   } catch (error) {
     console.error('Speech synthesis error:', error);
-    throw new functions.https.HttpsError('internal', 'Failed to synthesize speech. Please try again later.');
+    throw new HttpsError('internal', 'Failed to synthesize speech. Please try again later.');
   }
 });
 

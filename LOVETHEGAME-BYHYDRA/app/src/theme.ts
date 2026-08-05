@@ -10,6 +10,8 @@ const scale = (size: number) => (width / guidelineBaseWidth) * size;
 const verticalScale = (size: number) => (height / guidelineBaseHeight) * size;
 const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor;
 
+export { scale, verticalScale, moderateScale };
+
 // ============================================
 // DEEP COSMIC COLOR SYSTEM (NON-NEGOTIABLE)
 // ============================================
@@ -94,6 +96,91 @@ export const COLORS = {
   neonGlow: 'rgba(219, 20, 124, 0.5)',
   cosmicGlow: 'rgba(252, 199, 56, 0.4)',
   retroShadow: 'rgba(240, 93, 104, 0.3)',
+  glowPink: 'rgba(252, 12, 132, 0.5)',
+  glowYellow: 'rgba(255, 239, 31, 0.4)',
+  glowOrange: 'rgba(255, 118, 0, 0.3)',
+
+  // Gradient Aliases (v2 design system)
+  gradientStart: '#DB147C',
+  gradientEnd: '#F05D68',
+
+  // Background Aliases (v2 design system)
+  backgroundPrimary: '#0F0A0C',
+  backgroundSecondary: '#1A0A1F',
+  backgroundCard: '#2D1B45',
+  backgroundModal: '#0F0A1F',
+  backgroundInput: 'rgba(255, 255, 255, 0.05)',
+
+  // UI Element Aliases (v2 design system)
+  borderSubtle: 'rgba(255, 255, 255, 0.12)',
+  borderFocus: '#FC0C84',
+  divider: 'rgba(255, 255, 255, 0.08)',
+  card: '#2D1B45',
+  focusOutline: '#FC0C84',
+
+  // Additional Accents
+  crimsonRed: '#DC143C',
+  accentOrange: '#FF9E3D',
+  accentRose: '#E16BA9',
+
+  // Heart Line Gradients
+  innerLineStart: '#DB147C',
+  innerLineEnd: '#FF6B9D',
+
+  // Profile Ring (v2 design system)
+  profileRingStart: '#FCC738',
+  profileRingMid: '#EA031F',
+  profileRingEnd: '#C60AB3',
+};
+
+// ============================================
+// GRADIENT TOKENS
+// ============================================
+export const GRADIENTS = {
+  // Primary Button Gradient
+  primary: {
+    colors: [COLORS.primaryGradientStart, COLORS.primaryGradientEnd] as const,
+    start: { x: 0, y: 0 },
+    end: { x: 1, y: 1 },
+  },
+
+  // Background Gradient
+  background: {
+    colors: [COLORS.deepCosmic, COLORS.richPlum] as const,
+    start: { x: 0.5, y: 0.2 },
+    end: { x: 0.5, y: 1 },
+  },
+
+  // Progress Bar Gradient
+  progress: {
+    colors: [COLORS.progressGradientStart, COLORS.progressGradientMid1, COLORS.progressGradientMid2, COLORS.progressGradientEnd] as const,
+    start: { x: 0, y: 1 },
+    end: { x: 0, y: 0 },
+  },
+
+  // Avatar Ring Gradient
+  avatarRing: {
+    colors: [COLORS.avatarRingStart, COLORS.avatarRingMid, COLORS.avatarRingEnd] as const,
+    start: { x: 0, y: 0 },
+    end: { x: 1, y: 1 },
+  },
+
+  // Card Border Gradient
+  cardBorder: {
+    colors: ['rgba(252, 12, 132, 0.3)', 'rgba(252, 12, 132, 0.1)'] as const,
+    start: { x: 0, y: 0 },
+    end: { x: 1, y: 1 },
+  },
+
+  // Marcie Bubble Gradient
+  marcieBubble: {
+    colors: ['#FA1F63', 'rgba(250, 31, 99, 0)'] as const,
+    start: { x: 0, y: 0.5 },
+    end: { x: 1, y: 0.5 },
+  },
+
+  // Romance Hub Gradient
+  romanceHub: [COLORS.vibrantPink, COLORS.richPlum] as const,
 };
 
 // ============================================

@@ -280,7 +280,6 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.large,
     padding: SPACING.regular,
   },
-},
   container: {
     flex: 1,
     padding: SPACING.regular,
